@@ -8,6 +8,7 @@ from pydantic import BaseModel
 import re
 import os
 import threading
+from chatbot import get_chat_history
 
 app = FastAPI(title="KGamify AI Services")
 
@@ -37,7 +38,7 @@ models = {
 
 _recommend_resumes_fn = None
 _recommend_resumes_detailed_fn = None
-_chat_with_ollama_fn = None
+_chat_with_gemini_fn = None
 
 
 def _get_recommend_resumes_fn():
@@ -56,12 +57,12 @@ def _get_recommend_resumes_detailed_fn():
     return _recommend_resumes_detailed_fn
 
 
-def _get_chat_with_ollama_fn():
-    global _chat_with_ollama_fn
-    if _chat_with_ollama_fn is None:
-        from chatbot import chat_with_ollama as _chat
-        _chat_with_ollama_fn = _chat
-    return _chat_with_ollama_fn
+def _get_chat_with_gemini_fn():
+    global _chat_with_gemini_fn
+    if _chat_with_gemini_fn is None:
+        from chatbot import chat_with_gemini as _chat
+        _chat_with_gemini_fn = _chat
+    return _chat_with_gemini_fn
 
 def load_ml_models():
     """Try to load ML models, gracefully fail if not available"""
@@ -161,6 +162,7 @@ def correct_grammar_t5(text: str) -> str:
 # ==================== Request Models ====================
 class ChatRequest(BaseModel):
     message: str
+    user_id: Optional[str] = "guest"
 
 class TextRequest(BaseModel):
     text: str
@@ -218,8 +220,10 @@ def recommend_detailed_post(req: RecommendationRequest):
 def chat(req: ChatRequest):
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
-    chat_with_ollama = _get_chat_with_ollama_fn()
-    reply = chat_with_ollama(req.message)
+
+    chat_with_gemini = _get_chat_with_gemini_fn()
+    reply = chat_with_gemini(req.user_id, req.message)
+
     return {"reply": reply}
 
 # -------------------------------
@@ -355,3 +359,7 @@ def root():
         "endpoints": ["/recommend", "/chat", "/rephrase", "/spell-correct", "/suggest", "/health"],
         "models_loaded": models['loaded']
     }
+
+@app.get("/chat-history/{user_id}")
+def chat_history(user_id: str):
+    return {"messages": get_chat_history(user_id)}
